@@ -27,8 +27,7 @@ const Register = () => {
         "http://127.0.0.1:5000/auth/register",
         userinfo
       );
-
-      // localStorage.setItem("authToken", data.token);
+      localStorage.setItem("authToken", data.token);
 
       dispatch(addUserinfo(userinfo));
 

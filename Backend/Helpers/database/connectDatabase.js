@@ -1,9 +1,16 @@
-const mongoose = require("mongoose");
+const mysql = require('mysql');
 
 const connectDatabase = async () => {
-  await mongoose.connect(process.env.MONGO_URI);
+  const connection = await mysql.createConnection({
+    host: process.env.MYSQL_HOST,
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
+  });
 
-  console.log("MongoDB Connection Successfully");
+  console.log('MySQL Connection Successfully');
+
+  return connection;
 };
 
 module.exports = connectDatabase;

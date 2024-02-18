@@ -20,15 +20,12 @@ const register = asyncErrorWrapper (async  (req,res,next) => {
 
     const { username,email , password} = req.body  ;
     
-
-
-    const newUser = await User.create({
+    const newUser = await User.createUser({
         username,
         email,
         password
     })
 
-    console.log(newUser);
     
     sendToken(newUser,201,res)
   

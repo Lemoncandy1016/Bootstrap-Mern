@@ -10,10 +10,8 @@ const Main = () => {
   let data: any;
   let username = "";
   if (restoredData) {
-    console.log(restoredData);
     data = jwtDecode(restoredData ?? "");
     username = data["username"];
-    console.log(data);
   }
 
   // const [username, setusername] = useState("");

@@ -1,3 +1,5 @@
+const User = require("../../Models/user");
+
 const isTokenIncluded =(req) => {
    
     return (
@@ -15,22 +17,24 @@ const getAccessTokenFromHeader = (req) => {
     return access_token
 }
 
-const sendToken = (user,statusCode ,res)=>{
-
-    console.log("start of sendtoken"); 
-    const token = user.generateJwtFromUser()
-
-
-    console.log(user);
-    console.log(statusCode);
-    console.log(res);
-
-    return res.status(statusCode).json({
-        success: true ,
+const sendToken = async (user, statusCode, res) => {
+    try {
+      const token = await User.generateJwtFromUser(user);
+  
+      return res.status(statusCode).json({
+        success: true,
         token
-    })
-
-}
+      });
+    } catch (error) {
+      // Handle any errors that occurred during token generation
+      console.error(error);
+  
+      return res.status(500).json({
+        success: false,
+        error: 'Internal Server Error'
+      });
+    }
+  };
 
 module.exports ={
     sendToken,

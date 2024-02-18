@@ -1,98 +1,168 @@
-const crypto = require("crypto")
+const crypto = require("crypto");
+const mysql = require("mysql2");
 
-const mongoose = require("mongoose")
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { any } = require("../Helpers/Libraries/imageUpload");
+const dotenv = require("dotenv")
 
-const bcrypt = require("bcryptjs")
-
-const jwt = require("jsonwebtoken")
-
-const UserSchema = new mongoose.Schema({
-
-    username : {
-        type :String,
-        // required : [true ,"Please provide a username"]
-    },
-    photo : {
-        type : String,
-        default : "user.png"
-    },
-    email : {
-        type: String ,
-        required : [true ,"Please provide a email"],
-        unique : true ,
-        match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address']
-    },
-    password : {
-        type:String,
-        minlength: [6, "Please provide a password with min length : 6 "],
-        required: [true, "Please provide a password"],
-        select: false
-    },
-    role: {
-        type: String,
-        default: "user",
-        enum: ["user", "admin"]
-    },
-    readList : [{
-        type : mongoose.Schema.ObjectId, 
-        ref : "Story"
-    }],
-    readListLength: {
-        type: Number,
-        default: 0
-    },
-    resetPasswordToken : String ,
-    resetPasswordExpire: Date 
-
-
-},{timestamps: true})
-
-
-UserSchema.pre("save" , async function (next) {
-
-    if (!this.isModified("password")) {
-        next()
-    }
-
-    const salt = await bcrypt.genSalt(10)
-
-    this.password = await bcrypt.hash(this.password,salt)
-    next();
-
+dotenv.config({
+    path:  '.env'
 })
 
 
-UserSchema.methods.generateJwtFromUser  = function(){
-    
-    const { JWT_SECRET_KEY,JWT_EXPIRE } = process.env;
 
-    payload = {
-        id: this._id,
-        username : this.username,
-        email : this.email
+var con = mysql.createConnection({
+  host: process.env.MYSQL_HOST,
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  database: process.env.MYSQL_DATABASE,
+});
+
+
+
+const User = {
+  createUser: async function(userData) {
+    return new Promise((resolve, reject) => {
+      con.connect(function(err) {
+        if (err) throw err;
+        console.log("Connected!");
+  
+        con.query(
+          "SELECT COUNT(*) AS tableCount FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 'users'",
+          function(err, result) {
+            if (err) throw err;
+            const tableExists = result[0].tableCount === 1;
+  
+            if (!tableExists) {
+              con.query(
+                `CREATE TABLE test.users (
+                  username VARCHAR(255),
+                  photo VARCHAR(255),
+                  email VARCHAR(255),
+                  password VARCHAR(255),
+                  role VARCHAR(255),
+                  resetPasswordToken BOOLEAN,
+                  resetPasswordExpire BOOLEAN,
+                  createdAt DATE,
+                  updatedAt DATE
+                )`,
+                function(err) {
+                  if (err) throw err;
+                  console.log("Table 'users' created");
+                  insertUserData(userData);
+                }
+              );
+            } else {
+              insertUserData(userData);
+            }
+          }
+        );
+  
+        function insertUserData(userData) {
+          var sql =
+            "INSERT INTO users (username, photo, email, password, role, resetPasswordToken, resetPasswordExpire, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  
+          var values = [
+            userData.username,
+            userData.photo || "user.png",
+            userData.email,
+            userData.password,
+            userData.role || "user",
+            userData.resetPasswordToken || null,
+            userData.resetPasswordExpire || null,
+            new Date(),
+            new Date(),
+          ];
+  
+          con.query(sql, values, function(err, result) {
+            if (err) throw err;
+            console.log("1 record inserted");
+  
+            // Create the object with username, email, and password
+            const userObject = {
+              username: userData.username,
+              email: userData.email,
+              password: userData.password,
+            };
+  
+            resolve(userObject);
+          });
+        }
+      });
+    });
+  },
+
+  getUserByEmail: async function (email) {
+    const connection = await pool.getConnection();
+
+    try {
+      const [results] = await connection.execute(
+        "SELECT * FROM users WHERE email = ?",
+        [email]
+      );
+
+      return results[0];
+    } catch (error) {
+      console.error("MySQL Error:", error);
+      throw error;
+    } finally {
+      connection.release();
     }
+  },
 
-    const token = jwt.sign(payload ,JWT_SECRET_KEY, {expiresIn :JWT_EXPIRE} )
+  updateUserPassword: async function (userId, newPassword) {
+    const connection = await pool.getConnection();
 
-    return token 
-}
+    try {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-UserSchema.methods.getResetPasswordTokenFromUser =function(){
+      await connection.execute(
+        "UPDATE users SET password = ? WHERE id = ?",
+        [hashedPassword, userId]
+      );
+    } catch (error) {
+      console.error("MySQL Error:", error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
 
-    const { RESET_PASSWORD_EXPIRE } = process.env
-
-    const randomHexString = crypto.randomBytes(20).toString("hex")
-
-    const resetPasswordToken = crypto.createHash("SHA256").update(randomHexString).digest("hex")
-
-    this.resetPasswordToken = resetPasswordToken
+   generateJwtFromUser : async function (user) {
+    const { JWT_SECRET_KEY, JWT_EXPIRE } = process.env;
+  
+    const payload = {
+      // id: this.id, // Assuming the primary key is named 'id' in your MySQL table
+      username: user.username,
+      email: user.email,
+    };
     
-    this.resetPasswordExpire =Date.now()+ parseInt(RESET_PASSWORD_EXPIRE)
+    const token = jwt.sign(payload, JWT_SECRET_KEY, { expiresIn: JWT_EXPIRE });
+    
+    return token;
+  },
+  
+   getResetPasswordTokenFromUser : async function () {
+    const { RESET_PASSWORD_EXPIRE } = process.env;
+  
+    const randomHexString = crypto.randomBytes(20).toString("hex");
+  
+    const resetPasswordToken = crypto
+      .createHash("SHA256")
+      .update(randomHexString)
+      .digest("hex");
+  
+    this.resetPasswordToken = resetPasswordToken;
+    this.resetPasswordExpire = new Date(
+      Date.now() + parseInt(RESET_PASSWORD_EXPIRE)
+    );
+  
+    return resetPasswordToken;
+  }
 
-    return resetPasswordToken
-}
 
+};
 
-const User = mongoose.model("User",UserSchema)
-
-module.exports = User  ;
+module.exports = User;
